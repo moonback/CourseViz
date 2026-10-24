@@ -9,8 +9,7 @@ import {
   StrategyType,
   PracticeShotResult,
 } from './types/golf';
-import { GolfMap } from './components/GolfMap';
-import { GolfMap3D } from './components/GolfMap3D';
+import { GolfFreeMap } from './components/GolfFreeMap';
 import { HoleSelector } from './components/HoleSelector';
 import { ShotPlanner } from './components/ShotPlanner';
 import { HoleInfoPanel } from './components/HoleInfoPanel';
@@ -19,7 +18,6 @@ import { WelcomeScreen } from './components/WelcomeScreen';
 import { GolfTransitionOverlay } from './components/GolfTransitionOverlay';
 import { ControlsGuideModal } from './components/ControlsGuideModal';
 import { RoadmapModal } from './components/RoadmapModal';
-import { APIProvider } from '@vis.gl/react-google-maps';
 import { Flag, Sparkles, BookOpen, Target, LayoutGrid, Zap, Keyboard, Compass, Globe } from 'lucide-react';
 import { useIsMobile, useIsTablet } from './utils/useIsMobile';
 import { Language, UnitSystem, translations } from './utils/i18n';
@@ -69,46 +67,21 @@ export default function App() {
 
   const t = translations[lang];
 
-  const [apiKey, setApiKey] = useState<string>(() => {
-    return (
-      import.meta.env.VITE_GOOGLE_MAPS_API_KEY ||
-      sessionStorage.getItem('VITE_GOOGLE_MAPS_API_KEY') ||
-      ''
-    );
-  });
-
-  const handleUpdateApiKey = (newKey: string) => {
-    setApiKey(newKey);
-    if (typeof window !== 'undefined') {
-      sessionStorage.setItem('VITE_GOOGLE_MAPS_API_KEY', newKey);
-    }
-  };
-
   const [selectedHole, setSelectedHole] = useState<GolfHole>(GOLF_HOLES[0]);
   const [selectedTee, setSelectedTee] = useState<TeeOption>(GOLF_HOLES[0].teeOptions[0]);
   const [targetPosition, setTargetPosition] = useState<LatLngLiteral>(GOLF_HOLES[0].pinPosition);
-  const [mapTypeId, setMapTypeId] = useState<string>('hybrid');
   const [showRings, setShowRings] = useState<boolean>(true);
   const [showFlightArc, setShowFlightArc] = useState<boolean>(true);
   const [showHazards, setShowHazards] = useState<boolean>(true);
   const [is3DMode, setIs3DMode] = useState<boolean>(false);
   const [isTransitioning, setIsTransitioning] = useState<boolean>(false);
   const [transitionTargetMode, setTransitionTargetMode] = useState<'3d' | '2d'>('3d');
-  const [is3DTilesReady, setIs3DTilesReady] = useState<boolean>(false);
   const [mobileOpenPanel, setMobileOpenPanel] = useState<'planner' | 'caddie' | 'camera' | 'overlays' | null>(null);
 
   // Responsive device orientation and view tracking
   const isMobile = useIsMobile();
   const isTablet = useIsTablet();
   const isSinglePanelMode = isMobile || isTablet;
-
-  // Pre-fetch Google Maps 3D library in the background as soon as API is initialized
-  useEffect(() => {
-    const win = typeof window !== 'undefined' ? (window as any).google : null;
-    if (win?.maps?.importLibrary) {
-      win.maps.importLibrary('maps3d').catch(() => { });
-    }
-  }, [apiKey]);
 
   const handleSwitchTo3D = () => {
     if (is3DMode) return;
@@ -144,7 +117,7 @@ export default function App() {
   );
   const [activeEditingShot, setActiveEditingShot] = useState<1 | 2>(1);
 
-  // Practice Shot State (2D only)
+  // Practice Shot State
   const [isPracticeMode, setIsPracticeMode] = useState<boolean>(false);
   const [practiceShotResult, setPracticeShotResult] = useState<PracticeShotResult | null>(null);
   const [isHittingPracticeShot, setIsHittingPracticeShot] = useState<boolean>(false);
@@ -180,7 +153,7 @@ export default function App() {
     setPracticeShotHistory([]);
   };
 
-  // Automatically exit practice mode if screen is in mobile orientation (vertical or landscape)
+  // Automatically exit practice mode on mobile
   useEffect(() => {
     if (isMobile && isPracticeMode) {
       setIsPracticeMode(false);
@@ -200,7 +173,7 @@ export default function App() {
   };
 
   const handleOpenPracticeShot = (startPos?: LatLngLiteral, aimPos?: LatLngLiteral) => {
-    if (isMobile) return; // Completely disabled on mobile
+    if (isMobile) return;
     setIsPracticeMode(true);
     setPracticeShotNumber(1);
     setPracticeBallPos(startPos || selectedTee.position);
@@ -279,8 +252,6 @@ export default function App() {
       <>
         <WelcomeScreen
           holes={GOLF_HOLES}
-          apiKey={apiKey}
-          onUpdateApiKey={handleUpdateApiKey}
           lang={lang}
           onToggleLang={handleToggleLang}
           unitSystem={unitSystem}
@@ -335,6 +306,12 @@ export default function App() {
 
         {/* Header Right Actions: Language, Units, Roadmap, Controls, Home */}
         <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+          {/* Free Provider Indicator */}
+          <div className="hidden lg:flex items-center gap-1.5 px-2.5 py-1 rounded-xl bg-[#8FB062]/15 border border-[#8FB062]/30 text-[#8FB062] text-[11px] font-bold">
+            <span className="w-1.5 h-1.5 rounded-full bg-[#8FB062] inline-block animate-pulse" />
+            <span>{lang === 'fr' ? '100% Gratuit' : '100% Free'}</span>
+          </div>
+
           {/* Language Switcher */}
           <button
             onClick={handleToggleLang}
@@ -392,252 +369,206 @@ export default function App() {
         </div>
       </header>
 
-      {/* Main Map Viewport */}
-      <main className="relative flex-1 w-full h-full overflow-hidden bg-[#EBE7DD]">
-        <APIProvider apiKey={apiKey || ''} solutionChannel="gmp_mcp_codeassist_v1_aistudio">
-          {/* 3D Photorealistic Mode Viewport */}
-          <div
-            id="golf-3d-map-container"
-            className={`absolute inset-0 transition-opacity duration-400 ease-in-out ${is3DMode ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'
-              }`}
-          >
-            <GolfMap3D
-              hole={selectedHole}
-              selectedTee={selectedTee}
-              targetPosition={targetPosition}
-              onSetTarget={setTargetPosition}
-              onSelectTee={setSelectedTee}
-              wind={wind}
-              onUpdateWind={setWind}
-              onExit3D={handleSwitchTo2D}
-              showHazards={showHazards}
-              onToggleHazards={() => setShowHazards((prev) => !prev)}
-              strategy={strategy}
-              onSelectStrategy={setStrategy}
-              layupPosition={layupPosition}
-              onSetLayupPosition={setLayupPosition}
-              activeEditingShot={activeEditingShot}
-              onSetActiveEditingShot={setActiveEditingShot}
-              onNextHole={handleNextHole}
-              nextHoleNumber={nextHole.holeNumber}
-              onReadyStateChange={(ready) => setIs3DTilesReady(ready)}
-            />
-          </div>
+      {/* Main Map Viewport (Powered by 100% Free MapLibre GL - Esri Satellite & OSM) */}
+      <main className="relative flex-1 w-full h-full overflow-hidden bg-[#131E12]">
+        <GolfFreeMap
+          hole={selectedHole}
+          selectedTee={selectedTee}
+          targetPosition={targetPosition}
+          onSetTarget={setTargetPosition}
+          showRings={showRings}
+          onToggleRings={() => setShowRings(!showRings)}
+          showFlightArc={showFlightArc}
+          onToggleFlightArc={() => setShowFlightArc(!showFlightArc)}
+          showHazards={showHazards}
+          onToggleHazards={() => setShowHazards(!showHazards)}
+          is3DMode={is3DMode}
+          onToggle3DMode={handleToggle3DMode}
+          onSelectHazard={handleFocusHazard}
+          strategy={strategy}
+          layupPosition={layupPosition}
+          onSetLayupPosition={setLayupPosition}
+          activeEditingShot={activeEditingShot}
+          practiceShotResult={practiceShotResult}
+          isHittingPracticeShot={isHittingPracticeShot}
+          onPracticeHitComplete={handlePracticeHitComplete}
+          isPracticeMode={!isMobile && isPracticeMode}
+          onTogglePracticeMode={!isMobile ? handleTogglePracticeMode : undefined}
+          practiceBallPos={practiceBallPos || selectedTee.position}
+          practiceAimPos={practiceAimPos || selectedHole.pinPosition}
+          onSetPracticeAimPos={!isMobile ? setPracticeAimPos : undefined}
+          practiceShotNumber={practiceShotNumber}
+          practiceShotHistory={practiceShotHistory}
+          activeMobilePanel={mobileOpenPanel}
+          onSetActiveMobilePanel={setMobileOpenPanel}
+          isSinglePanelMode={isSinglePanelMode}
+          lang={lang}
+          unitSystem={unitSystem}
+        />
 
-          {/* 2D Interactive Google Map Mode */}
+        {/* Backdrop click-catcher to dismiss any open panel */}
+        {mobileOpenPanel && isSinglePanelMode && (
           <div
-            id="golf-2d-map-container"
-            className={`absolute inset-0 transition-opacity duration-300 ease-in-out ${!is3DMode ? 'opacity-100 z-10 pointer-events-auto' : 'opacity-0 z-0 pointer-events-none'
-              }`}
-          >
-            <GolfMap
-              apiKey={apiKey}
-              hole={selectedHole}
-              selectedTee={selectedTee}
-              targetPosition={targetPosition}
-              onSetTarget={setTargetPosition}
-              mapTypeId={mapTypeId}
-              onMapTypeChange={setMapTypeId}
-              showRings={showRings}
-              onToggleRings={() => setShowRings(!showRings)}
-              showFlightArc={showFlightArc}
-              onToggleFlightArc={() => setShowFlightArc(!showFlightArc)}
-              showHazards={showHazards}
-              onToggleHazards={() => setShowHazards(!showHazards)}
-              is3DMode={is3DMode}
-              onToggle3DMode={handleSwitchTo3D}
-              onSelectHazard={handleFocusHazard}
-              strategy={strategy}
-              layupPosition={layupPosition}
-              onSetLayupPosition={setLayupPosition}
-              activeEditingShot={activeEditingShot}
-              practiceShotResult={practiceShotResult}
-              isHittingPracticeShot={isHittingPracticeShot}
-              onPracticeHitComplete={handlePracticeHitComplete}
-              isPracticeMode={!isMobile && isPracticeMode}
-              onTogglePracticeMode={!isMobile ? handleTogglePracticeMode : undefined}
-              practiceBallPos={practiceBallPos || selectedTee.position}
-              practiceAimPos={practiceAimPos || selectedHole.pinPosition}
-              onSetPracticeAimPos={!isMobile ? setPracticeAimPos : undefined}
-              practiceShotNumber={practiceShotNumber}
-              practiceShotHistory={practiceShotHistory}
-              activeMobilePanel={mobileOpenPanel}
-              onSetActiveMobilePanel={setMobileOpenPanel}
-              isSinglePanelMode={isSinglePanelMode}
-              lang={lang}
-              unitSystem={unitSystem}
-            />
+            id="panel-backdrop"
+            aria-hidden="true"
+            onClick={() => setMobileOpenPanel(null)}
+            className="fixed inset-0 z-15 bg-transparent cursor-pointer pointer-events-auto"
+          />
+        )}
 
-            {/* Backdrop click-catcher to dismiss any open panel */}
-            {mobileOpenPanel && isSinglePanelMode && (
-              <div
-                id="panel-backdrop"
-                aria-hidden="true"
-                onClick={() => setMobileOpenPanel(null)}
-                className="fixed inset-0 z-15 bg-transparent cursor-pointer pointer-events-auto"
+        {/* Bottom Floating Cards & Quick Access Navigation */}
+        <div
+          className={`absolute bottom-3 left-3 right-3 z-20 pointer-events-none flex ${
+            isSinglePanelMode ? 'flex-col items-stretch' : 'flex-row items-end'
+          } justify-between gap-2 md:gap-3 max-h-[calc(100vh-100px)] overflow-hidden`}
+        >
+          {/* Shot Planner / Practice Shot Card */}
+          <div
+            className={`pointer-events-auto w-full md:w-[390px] max-w-full ${
+              isSinglePanelMode
+                ? (mobileOpenPanel === 'planner' ? 'block self-start' : 'hidden')
+                : 'block'
+            }`}
+          >
+            {!isMobile && isPracticeMode ? (
+              <PracticeShotPanel
+                hole={selectedHole}
+                ballPosition={practiceBallPos || selectedTee.position}
+                aimPosition={practiceAimPos || selectedHole.pinPosition}
+                onSetAimPosition={setPracticeAimPos}
+                shotNumber={practiceShotNumber}
+                shotHistory={practiceShotHistory}
+                wind={wind}
+                shotResult={practiceShotResult}
+                isHitting={isHittingPracticeShot}
+                onExecuteShot={handleExecutePracticeShot}
+                onPlayNextShot={handlePlayNextShot}
+                onReplayShot={handleReplayPracticeShot}
+                onResetCurrentShot={handleResetCurrentShot}
+                onRetakeOBShot={handleRetakeOBPracticeShot}
+                onResetHole={handleResetHolePractice}
+                onClose={() => {
+                  handleTogglePracticeMode();
+                  setMobileOpenPanel(null);
+                }}
+                lang={lang}
+                unitSystem={unitSystem}
+              />
+            ) : (
+              <ShotPlanner
+                hole={selectedHole}
+                teePosition={selectedTee.position}
+                targetPosition={targetPosition}
+                pinPosition={selectedHole.pinPosition}
+                selectedTee={selectedTee}
+                onSelectTee={setSelectedTee}
+                onSetTarget={setTargetPosition}
+                wind={wind}
+                onUpdateWind={setWind}
+                strategy={strategy}
+                onSelectStrategy={setStrategy}
+                layupPosition={layupPosition}
+                onSetLayupPosition={setLayupPosition}
+                activeEditingShot={activeEditingShot}
+                onSetActiveEditingShot={setActiveEditingShot}
+                onCloseMobile={isSinglePanelMode ? () => setMobileOpenPanel(null) : undefined}
+                lang={lang}
+                unitSystem={unitSystem}
+                onOpenPracticeShot={
+                  !isMobile
+                    ? () => {
+                        let initialAim = targetPosition;
+                        let initialBall = selectedTee.position;
+                        if (strategy === '3-shot' && activeEditingShot === 2 && layupPosition) {
+                          initialBall = layupPosition;
+                          initialAim = targetPosition;
+                        } else if (strategy === '3-shot' && activeEditingShot === 1 && layupPosition) {
+                          initialAim = layupPosition;
+                        }
+                        handleOpenPracticeShot(initialBall, initialAim);
+                      }
+                    : undefined
+                }
               />
             )}
-
-            {/* Bottom Floating Cards & Quick Access Navigation */}
-            <div
-              className={`absolute bottom-3 left-3 right-3 z-20 pointer-events-none flex ${
-                isSinglePanelMode ? 'flex-col items-stretch' : 'flex-row items-end'
-              } justify-between gap-2 md:gap-3 max-h-[calc(100vh-100px)] overflow-hidden`}
-            >
-              {/* Shot Planner / Practice Shot Card */}
-              <div
-                className={`pointer-events-auto w-full md:w-[390px] max-w-full ${
-                  isSinglePanelMode
-                    ? (mobileOpenPanel === 'planner' ? 'block self-start' : 'hidden')
-                    : 'block'
-                }`}
-              >
-                {!isMobile && isPracticeMode ? (
-                  <PracticeShotPanel
-                    hole={selectedHole}
-                    ballPosition={practiceBallPos || selectedTee.position}
-                    aimPosition={practiceAimPos || selectedHole.pinPosition}
-                    onSetAimPosition={setPracticeAimPos}
-                    shotNumber={practiceShotNumber}
-                    shotHistory={practiceShotHistory}
-                    wind={wind}
-                    shotResult={practiceShotResult}
-                    isHitting={isHittingPracticeShot}
-                    onExecuteShot={handleExecutePracticeShot}
-                    onPlayNextShot={handlePlayNextShot}
-                    onReplayShot={handleReplayPracticeShot}
-                    onResetCurrentShot={handleResetCurrentShot}
-                    onRetakeOBShot={handleRetakeOBPracticeShot}
-                    onResetHole={handleResetHolePractice}
-                    onClose={() => {
-                      handleTogglePracticeMode();
-                      setMobileOpenPanel(null);
-                    }}
-                    lang={lang}
-                    unitSystem={unitSystem}
-                  />
-                ) : (
-                  <ShotPlanner
-                    hole={selectedHole}
-                    teePosition={selectedTee.position}
-                    targetPosition={targetPosition}
-                    pinPosition={selectedHole.pinPosition}
-                    selectedTee={selectedTee}
-                    onSelectTee={setSelectedTee}
-                    onSetTarget={setTargetPosition}
-                    wind={wind}
-                    onUpdateWind={setWind}
-                    strategy={strategy}
-                    onSelectStrategy={setStrategy}
-                    layupPosition={layupPosition}
-                    onSetLayupPosition={setLayupPosition}
-                    activeEditingShot={activeEditingShot}
-                    onSetActiveEditingShot={setActiveEditingShot}
-                    onCloseMobile={isSinglePanelMode ? () => setMobileOpenPanel(null) : undefined}
-                    lang={lang}
-                    unitSystem={unitSystem}
-                    onOpenPracticeShot={
-                      !isMobile
-                        ? () => {
-                            let initialAim = targetPosition;
-                            let initialBall = selectedTee.position;
-                            if (strategy === '3-shot' && activeEditingShot === 2 && layupPosition) {
-                              initialBall = layupPosition;
-                              initialAim = targetPosition;
-                            } else if (strategy === '3-shot' && activeEditingShot === 1 && layupPosition) {
-                              initialAim = layupPosition;
-                            }
-                            handleOpenPracticeShot(initialBall, initialAim);
-                          }
-                        : undefined
-                    }
-                  />
-                )}
-              </div>
-
-              {/* Hole Strategy & Hazards Card */}
-              <div
-                className={`pointer-events-auto w-full md:w-[390px] max-w-full ${
-                  isSinglePanelMode
-                    ? (mobileOpenPanel === 'caddie' ? 'block self-end' : 'hidden')
-                    : 'block'
-                }`}
-              >
-                <HoleInfoPanel
-                  hole={selectedHole}
-                  teePosition={selectedTee.position}
-                  targetPosition={targetPosition}
-                  pinPosition={selectedHole.pinPosition}
-                  onSetTarget={setTargetPosition}
-                  onFocusHazard={handleFocusHazard}
-                  onCloseMobile={isSinglePanelMode ? () => setMobileOpenPanel(null) : undefined}
-                  defaultExpanded={true}
-                  lang={lang}
-                  unitSystem={unitSystem}
-                  onInspectGreen={() => {
-                    const greenBtn = document.getElementById('btn-camera-green');
-                    if (greenBtn) {
-                      greenBtn.click();
-                    } else {
-                      setTargetPosition(selectedHole.pinPosition);
-                    }
-                  }}
-                />
-              </div>
-
-              {/* Quick-Access Buttons on Mobile: Bottom-Left (Shot Planner) & Lower-Right (Caddie Info) */}
-              <div
-                id="mobile-bottom-nav-bar"
-                className={`items-center justify-between w-full pointer-events-none order-last pt-0.5 ${
-                  isSinglePanelMode ? 'flex' : 'hidden'
-                }`}
-              >
-                {/* Bottom Left Button: Shot Planner */}
-                <button
-                  type="button"
-                  id="btn-mobile-shot-planner"
-                  onClick={() => setMobileOpenPanel((prev) => (prev === 'planner' ? null : 'planner'))}
-                  className={`pointer-events-auto flex items-center gap-2 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-xl cursor-pointer active:scale-95 border ${
-                    mobileOpenPanel === 'planner'
-                      ? 'bg-[#8FB062] text-[#152014] border-[#8FB062] shadow-emerald-950/40'
-                      : 'bg-[#1B291A]/95 backdrop-blur-md text-[#F1EDE2] hover:bg-[#253A23] border-[#364D34]'
-                  }`}
-                  aria-expanded={mobileOpenPanel === 'planner'}
-                  aria-label={t.shotPlannerTitle}
-                >
-                  <Target className="w-4 h-4 flex-shrink-0" />
-                  <span>{t.shotPlannerTitle}</span>
-                </button>
-
-                {/* Lower Right Button: Caddie Info */}
-                <button
-                  type="button"
-                  id="btn-mobile-caddie-info"
-                  onClick={() => setMobileOpenPanel((prev) => (prev === 'caddie' ? null : 'caddie'))}
-                  className={`pointer-events-auto flex items-center gap-2 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-xl cursor-pointer active:scale-95 border ${
-                    mobileOpenPanel === 'caddie'
-                      ? 'bg-[#8FB062] text-[#152014] border-[#8FB062] shadow-emerald-950/40'
-                      : 'bg-[#1B291A]/95 backdrop-blur-md text-[#F1EDE2] hover:bg-[#253A23] border-[#364D34]'
-                  }`}
-                  aria-expanded={mobileOpenPanel === 'caddie'}
-                  aria-label={t.caddieTitle}
-                >
-                  <BookOpen className="w-4 h-4 flex-shrink-0" />
-                  <span>{t.tabStrategy}</span>
-                </button>
-              </div>
-            </div>
           </div>
 
-          {/* Golf-Themed Cinematic Mode Transition */}
-          <GolfTransitionOverlay
-            isVisible={isTransitioning}
-            targetMode={transitionTargetMode}
-            hole={selectedHole}
-            is3DReady={is3DTilesReady}
-            onTransitionComplete={handleTransitionComplete}
-          />
-        </APIProvider>
+          {/* Hole Strategy & Hazards Card */}
+          <div
+            className={`pointer-events-auto w-full md:w-[390px] max-w-full ${
+              isSinglePanelMode
+                ? (mobileOpenPanel === 'caddie' ? 'block self-end' : 'hidden')
+                : 'block'
+            }`}
+          >
+            <HoleInfoPanel
+              hole={selectedHole}
+              teePosition={selectedTee.position}
+              targetPosition={targetPosition}
+              pinPosition={selectedHole.pinPosition}
+              onSetTarget={setTargetPosition}
+              onFocusHazard={handleFocusHazard}
+              onCloseMobile={isSinglePanelMode ? () => setMobileOpenPanel(null) : undefined}
+              defaultExpanded={true}
+              lang={lang}
+              unitSystem={unitSystem}
+              onInspectGreen={() => {
+                setTargetPosition(selectedHole.pinPosition);
+              }}
+            />
+          </div>
+
+          {/* Quick-Access Buttons on Mobile: Bottom-Left (Shot Planner) & Lower-Right (Caddie Info) */}
+          <div
+            id="mobile-bottom-nav-bar"
+            className={`items-center justify-between w-full pointer-events-none order-last pt-0.5 ${
+              isSinglePanelMode ? 'flex' : 'hidden'
+            }`}
+          >
+            {/* Bottom Left Button: Shot Planner */}
+            <button
+              type="button"
+              id="btn-mobile-shot-planner"
+              onClick={() => setMobileOpenPanel((prev) => (prev === 'planner' ? null : 'planner'))}
+              className={`pointer-events-auto flex items-center gap-2 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-xl cursor-pointer active:scale-95 border ${
+                mobileOpenPanel === 'planner'
+                  ? 'bg-[#8FB062] text-[#152014] border-[#8FB062] shadow-emerald-950/40'
+                  : 'bg-[#1B291A]/95 backdrop-blur-md text-[#F1EDE2] hover:bg-[#253A23] border-[#364D34]'
+              }`}
+              aria-expanded={mobileOpenPanel === 'planner'}
+              aria-label={t.shotPlannerTitle}
+            >
+              <Target className="w-4 h-4 flex-shrink-0" />
+              <span>{t.shotPlannerTitle}</span>
+            </button>
+
+            {/* Lower Right Button: Caddie Info */}
+            <button
+              type="button"
+              id="btn-mobile-caddie-info"
+              onClick={() => setMobileOpenPanel((prev) => (prev === 'caddie' ? null : 'caddie'))}
+              className={`pointer-events-auto flex items-center gap-2 px-3.5 py-2.5 rounded-2xl text-xs font-bold transition-all shadow-xl cursor-pointer active:scale-95 border ${
+                mobileOpenPanel === 'caddie'
+                  ? 'bg-[#8FB062] text-[#152014] border-[#8FB062] shadow-emerald-950/40'
+                  : 'bg-[#1B291A]/95 backdrop-blur-md text-[#F1EDE2] hover:bg-[#253A23] border-[#364D34]'
+              }`}
+              aria-expanded={mobileOpenPanel === 'caddie'}
+              aria-label={t.caddieTitle}
+            >
+              <BookOpen className="w-4 h-4 flex-shrink-0" />
+              <span>{t.tabStrategy}</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Golf-Themed Cinematic Mode Transition */}
+        <GolfTransitionOverlay
+          isVisible={isTransitioning}
+          targetMode={transitionTargetMode}
+          hole={selectedHole}
+          is3DReady={true}
+          onTransitionComplete={handleTransitionComplete}
+        />
       </main>
 
       {/* Accessible Live Region for Screen Readers */}

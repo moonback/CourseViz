@@ -716,3 +716,23 @@ export function simulatePracticeShot(
     penalty,
   };
 }
+
+/**
+ * Creates a GeoJSON circle coordinates array around a center point for a given radius in yards
+ */
+export function createGeoJSONCircle(center: LatLngLiteral, radiusYards: number, points = 64): [number, number][] {
+  const coords: [number, number][] = [];
+  const radiusMeters = radiusYards * 0.9144;
+  const earthRadius = 6371000;
+  const latRad = (center.lat * Math.PI) / 180;
+  const lngRad = (center.lng * Math.PI) / 180;
+  const d = radiusMeters / earthRadius;
+
+  for (let i = 0; i <= points; i++) {
+    const bearing = (i * 360) / points * (Math.PI / 180);
+    const pLat = Math.asin(Math.sin(latRad) * Math.cos(d) + Math.cos(latRad) * Math.sin(d) * Math.cos(bearing));
+    const pLng = lngRad + Math.atan2(Math.sin(bearing) * Math.sin(d) * Math.cos(latRad), Math.cos(d) - Math.sin(latRad) * Math.sin(pLat));
+    coords.push([(pLng * 180) / Math.PI, (pLat * 180) / Math.PI]);
+  }
+  return coords;
+}

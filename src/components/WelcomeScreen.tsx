@@ -120,9 +120,10 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
             <span className="hidden sm:inline">{t.roadmap}</span>
           </button>
 
-          {onUpdateApiKey && (
-            <ApiKeyBar apiKey={apiKey} onUpdateApiKey={onUpdateApiKey} />
-          )}
+          <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#8FB062]/15 border border-[#8FB062]/30 text-[#8FB062] font-semibold text-xs">
+            <span className="w-2 h-2 rounded-full bg-[#8FB062] inline-block animate-pulse" />
+            <span>{lang === 'fr' ? '100% Gratuit (Sans Clé)' : '100% Free (No Key)'}</span>
+          </div>
         </div>
       </header>
 
@@ -473,7 +474,7 @@ export const WelcomeScreen: React.FC<WelcomeScreenProps> = ({
       >
         <p>© CourseViz — {t.appSubtitle}</p>
         <p className="flex items-center gap-1">
-          <span>Google Maps Platform &amp; Photorealistic 3D Tiles</span>
+          <span>{lang === 'fr' ? 'Cartographie Satellite Esri & OpenStreetMap • Moteur WebGL Libre' : 'Esri Satellite & OpenStreetMap Mapping • Open WebGL Engine'}</span>
         </p>
       </footer>
     </div>
