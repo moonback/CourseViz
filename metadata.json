@@ -1,0 +1,8 @@
+{
+  "name": "Remix CourseViz - Explore Pebble Beach Hole 7",
+  "description": "CourseViz is an interactive golf course exploration and shot planning application that allows golfers to analyze iconic hole layouts, visualize hazards and landing zones, and simulate realistic golf shot trajectories in both 2D high-resolution satellite imagery and immersive Photorealistic 3D Maps. ",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
